@@ -8,6 +8,14 @@ from numpy.polynomial.polynomial import polyfit
 
 DATA_NUM = 512
 
+def polar_to_cart_point(theta, value):
+    if not math.isinf(value) and not math.isnan(value): 
+        x = value*math.cos(theta)
+        y = value*math.sin(theta)
+        return x, y 
+    else:
+        return 0, 0
+
 def polar_to_cart(thetas, values):
     xs = list()
     ys = list()
@@ -41,9 +49,6 @@ class Wall:
         self.min_x = min_x
 
 class Point:
-    def __init__(self) -> None:
-        pass
-
     angle = 0
     r = 0
     x = 0
@@ -51,7 +56,64 @@ class Point:
     number = 0
     used = False
 
+    def __init__(self, angle, r, number) -> None:
+        self.angle = angle
+        self.r = r
+        self.number = number
+        self.add_cartesian()
 
+    def was_used(self):
+        self.usef = True
+
+    def add_cartesian(self):
+        self.x, self.y = polar_to_cart_point(self.angle, self.r)
+    
+
+def unassigned_data_exist(points_list):
+    for point in points_list:
+        if not point.used:
+            return True
+    return False
+
+def max_x_list_of_points(points_list):
+    final_point = None
+    for point in points_list:
+        if final_point == None:
+            final_point = point
+        if point.x > final_point.x:
+            final_point = point
+    return final_point
+
+def min_x_list_of_points(points_list):
+    final_point = None
+    for point in points_list:
+        if final_point == None:
+            final_point = point
+        if point.x < final_point.x:
+            final_point = point
+    return final_point
+
+def take_unused_points(points_list):
+    unused_points = list()
+    for point in points_list:
+        if point.used == False:
+            unused_points.append(point)
+    return unused_points
+
+def plot_points(points, args='o'):
+    x = [point.x for point in points]
+    y = [point.y for point in points]
+    plt.plot(x, y, args)
+
+def plot_walls(walls):
+
+    for wall in walls:
+        line_x = np.linspace(wall.min_x, wall.max_x, 2)
+        line_y = wall.par_a*line_x + wall.par_b
+        plt.plot(line_x, line_y, 'r' ,linewidth = 3)
+    plt.show()
+
+        
 if __name__ == "__main__":        
 
     f = open('box.json')
@@ -72,8 +134,6 @@ if __name__ == "__main__":
     # x_s, y_s = polar_to_cart(theta, data)
 
 
-
-
     # RANSAC for line segments 
     # parameters:
     #  N, D, S, X, C
@@ -89,48 +149,52 @@ if __name__ == "__main__":
 
 
 
-    pol_data = list()
-    pol_data = [(i[0],i[1], 0) for i in zip(theta, data)]
+    points = list()
+    for i, p in enumerate(zip(theta, data)):
+        if not math.isinf(p[1]) and not math.isnan(p[1]):
+           points.append( Point(p[0], p[1], i))
+    org_points = points
 
+    N = 30
 
-
-
-    N = 5
-
-    D = 0.2 # angle of section
+    D = 0.1 # angle of section
 
     S = 10
     I = 0
 
     X = 0.1 # error in values
-    C = 50 # numbers of samples fitted in error margin
+    C = 30 # numbers of samples fitted in error margin
 
 
-    assigned_data = [0] * DATA_NUM
+    # assigned_data = [0] * DATA_NUM
     walls = list()
 
-    while zero_in_list(assigned_data) and I<N:
-        rand_angle = random.choice(theta)
-        sub_list = [i for i in pol_data if i[0]>rand_angle-D and i[0]<rand_angle+D]
-        # sub_list_cartesian = polar_to_cart_one_list(sub_list)
-        rand_list = random.sample(sub_list, S)
-        rand_list_cartesian = polar_to_cart_one_list(rand_list)
-
+    # change here everything to list with points 
+    # define function to check if there is any 0 in list of points
+    
+    while unassigned_data_exist(points) and I<N:
+        points = take_unused_points(points)
+        rand_point = random.choice(points)
+        points_in_section = [point for point in points if point.angle>rand_point.angle-D and point.angle<rand_point.angle+D]
+        if len(points_in_section) < S:
+            continue
+        rand_points_from_section = random.sample(points_in_section, S)
+        
         # if list is not empty        
-        if rand_list_cartesian:
+        if rand_points_from_section:
 
-            x = [i[0] for i in rand_list_cartesian]
-            y = [i[1] for i in rand_list_cartesian]
-            
             ### test plot of data to regression
-            plt.plot(x, y, 'o')
-            plt.show()
+            plot_points(rand_points_from_section)
+            # plt.show()
             #############
+            
+            x = [point.x for point in rand_points_from_section]
+            y = [point.y for point in rand_points_from_section]
             
             b, a = polyfit(x, y, 1) # a*x+b 
             
             ### test plot of regression
-            line_x = np.linspace(min(rand_list_cartesian)[0], max(rand_list_cartesian)[0], 10)
+            line_x = np.linspace( min_x_list_of_points(rand_points_from_section).x , max_x_list_of_points(rand_points_from_section).x, 10)
             line_y = a*line_x+b
             plt.plot(line_x, line_y)
 
@@ -141,36 +205,44 @@ if __name__ == "__main__":
 
             ##############
 
-            sub_list_cartesian = polar_to_cart_one_list(sub_list)
+            # sub_list_cartesian = polar_to_cart_one_list(sub_list)
             
             ### test plot of data within section
-            sub_list_x = [i[0] for i in sub_list_cartesian]
-            sub_list_y = [i[1] for i in sub_list_cartesian]
-            plt.plot(sub_list_x, sub_list_y, 'o')
+            plot_points(points_in_section)
+            # sub_list_x = [point.x for point in points_in_section]
+            # sub_list_y = [point.y for point in points_in_section]
+            # plt.plot(sub_list_x, sub_list_y, 'o')
             ##############
 
             # how many samples are in the distance smaller then X form the line
             fitted_count = 0
-            for i in sub_list_cartesian:
-                if i[1] < ((a*i[0]+b)  + X) and i[1] > ((a*i[0]+b) - X):
+            for point in points_in_section:
+                if point.y < ((a*point.x+b)  + X) and point.y > ((a*point.x+b) - X):
                     fitted_count += 1
             
             print(f"Number of fitted samples: {fitted_count}")
             if fitted_count > C:
                 # recaluclate regression for all samples 
-                x = [i[0] for i in sub_list_cartesian]
-                y = [i[1] for i in sub_list_cartesian]
+                x = [point.x for point in points_in_section]
+                y = [point.y for point in points_in_section]
+
                 real_b, real_a = polyfit(x, y, 1) 
 
                 walls.append(Wall(real_a, real_b, max(x), min(x)))
+                
+                # mark used in points list
+                for point in points_in_section:
+                    point.used = True
 
-
-                for i in pol_data: # tu zamienic na polar
-                    if i[0] in x: # tu sprawdzać w polar
-                        i[2] = 1            
             plt.clf() # clean plot
 
         I+=1
 
 
+    plot_points(org_points, args="x")
 
+    print(f"Number of walls: {len(walls)}")
+    plot_walls(walls)
+
+
+    pass
