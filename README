@@ -1,0 +1,14 @@
+Data files description, lengths in mm 
+
+box.json:
+distance to back wall: 990
+dimensions of left part:  width=300 depth=350
+dimensions of right part: width=200, depth=250
+
+step.json
+size of boxes: 555x280
+distances: 1140/1420
+
+wall.json:
+width: 1110
+
