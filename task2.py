@@ -121,7 +121,8 @@ def ransac(points):
     I = 0
     X = 0.1 # error in values
     C = 30 # numbers of samples fitted in error margin
-    
+    C_proc = 0.9 # numbers of samples fitted in error margin but in precentage
+
     walls = list()
 
     while unassigned_data_exist(points) and I<N:
@@ -173,7 +174,8 @@ def ransac(points):
                     fitted_count += 1
             
             print(f"Number of fitted samples: {fitted_count}")
-            if fitted_count > C:
+            points_in_section_size = len(points_in_section)
+            if fitted_count/points_in_section_size > C_proc:
                 # recaluclate regression for all samples 
                 x = [point.x for point in points_in_section]
                 y = [point.y for point in points_in_section]
