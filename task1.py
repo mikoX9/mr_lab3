@@ -1,4 +1,5 @@
 import json
+from tkinter import W
 from matplotlib import pyplot as plt
 import math
 import numpy as np
@@ -42,11 +43,12 @@ def zero_in_list(l):
 
 
 class Wall:
-    def __init__(self, par_a, par_b, max_x, min_x) -> None:
+    def __init__(self, par_a, par_b, max_x, min_x, no) -> None:
         self.par_a = par_a
         self.par_b = par_b
         self.max_x = max_x
         self.min_x = min_x
+        self.no = no 
 
 class Point:
     angle = 0
@@ -113,70 +115,25 @@ def plot_walls(walls):
         plt.plot(line_x, line_y, 'r' ,linewidth = 3)
     plt.show()
 
-        
-if __name__ == "__main__":        
 
-    f = open('box.json')
-    data = json.load(f)
-    f.close()
-
-    x = np.arange(0,DATA_NUM)
-    theta = (np.pi/DATA_NUM )*x  # theta - scan angles in [rad]
-
-    # fig1 = plt.figure()
-    # #plotting in polar coordinates  
-    # ax1 = fig1.add_axes([0.1,0.1,0.8,0.8],polar=True) 
-    # line, = ax1.plot(theta,data,'o',lw=1.5)
-    # #setting range limits
-    # ax1.set_ylim(0,5)  
-    # # plt.show()
-
-    # x_s, y_s = polar_to_cart(theta, data)
-
-
-    # RANSAC for line segments 
-    # parameters:
-    #  N, D, S, X, C
-    # while exist unassigned samples and iteration is smaller than N
-    #   choose a random angle r
-    #   select randomly S samples from angle [r-D,r+D] as Rs
-    #   fit the best line to set Rs (linear regression, least square method)
-    #   determine how many samples are in distance smaller than X from the line
-    #   if the number of matching samples is bigger than C
-    #    for all samples matching the line recalculate line parameters
-    #    add the line to the result
-    #    remove samples fitting to the line from unassigned set
-
-
-
-    points = list()
-    for i, p in enumerate(zip(theta, data)):
-        if not math.isinf(p[1]) and not math.isnan(p[1]):
-           points.append( Point(p[0], p[1], i))
-    org_points = points
-
+def ransac(points):
     N = 30
-
     D = 0.1 # angle of section
-
     S = 10
-    I = 0
-
     X = 0.1 # error in values
     C = 30 # numbers of samples fitted in error margin
+    C_proc = 0.9 # numbers of samples fitted in error margin but in precentage
 
-
-    # assigned_data = [0] * DATA_NUM
     walls = list()
+    walls_no = 0
 
-    # change here everything to list with points 
-    # define function to check if there is any 0 in list of points
-    
+    I = 0
     while unassigned_data_exist(points) and I<N:
         points = take_unused_points(points)
         rand_point = random.choice(points)
         points_in_section = [point for point in points if point.angle>rand_point.angle-D and point.angle<rand_point.angle+D]
         if len(points_in_section) < S:
+            I+=1
             continue
         rand_points_from_section = random.sample(points_in_section, S)
         
@@ -221,14 +178,15 @@ if __name__ == "__main__":
                     fitted_count += 1
             
             print(f"Number of fitted samples: {fitted_count}")
-            if fitted_count > C:
+            points_in_section_size = len(points_in_section)
+            if fitted_count/points_in_section_size > C_proc:
                 # recaluclate regression for all samples 
                 x = [point.x for point in points_in_section]
                 y = [point.y for point in points_in_section]
 
                 real_b, real_a = polyfit(x, y, 1) 
-
-                walls.append(Wall(real_a, real_b, max(x), min(x)))
+                walls_no += 1
+                walls.append(Wall(real_a, real_b, max(x), min(x),walls_no))
                 
                 # mark used in points list
                 for point in points_in_section:
@@ -238,11 +196,117 @@ if __name__ == "__main__":
 
         I+=1
 
+    return walls
+
+        
+if __name__ == "__main__":        
+
+    f = open('line_localization_1.json')
+    data = json.load(f)
+    f.close()
+
+    x = np.arange(0,DATA_NUM)
+    theta = (np.pi/DATA_NUM )*x  # theta - scan angles in [rad]
+
+    # fig1 = plt.figure()
+    # #plotting in polar coordinates  
+    # ax1 = fig1.add_axes([0.1,0.1,0.8,0.8],polar=True) 
+    # line, = ax1.plot(theta,data,'o',lw=1.5)
+    # #setting range limits
+    # ax1.set_ylim(0,5)  
+    # # plt.show()
+
+    # x_s, y_s = polar_to_cart(theta, data)
+
+
+    # RANSAC for line segments 
+    # parameters:
+    #  N, D, S, X, C
+    # while exist unassigned samples and iteration is smaller than N
+    #   choose a random angle r
+    #   select randomly S samples from angle [r-D,r+D] as Rs
+    #   fit the best line to set Rs (linear regression, least square method)
+    #   determine how many samples are in distance smaller than X from the line
+    #   if the number of matching samples is bigger than C
+    #    for all samples matching the line recalculate line parameters
+    #    add the line to the result
+    #    remove samples fitting to the line from unassigned set
+
+
+
+    points = list()
+    data = data[0]['scan']
+    for i, p in enumerate(zip(theta, data)):
+        if not math.isinf(p[1]) and not math.isnan(p[1]):
+           points.append( Point(p[0], p[1], i))
+    org_points = points
+
+    walls = ransac(points)
+
+    domain_error_margin = 0.1
+
+    # for each wall check crossing with all others walls
+    #    if crossing is in both domain +-domain_error term then it is corner
+    
+    corners = []
+    
+    for wall_1 in walls:
+        for wall_2 in walls:
+            if wall_1.no >= wall_2.no:
+                continue
+            
+
+
+            x_cross = (wall_2.par_b - wall_1.par_b) / (wall_1.par_a - wall_2.par_a)
+            y_cross = wall_1.par_a * x_cross + wall_1.par_b
+            
+            # plot_walls([wall_1, wall_2])
+            # plt.plot(x_cross,y_cross,'bo') 
+            
+            a1 = wall_1.par_a
+            b1 = wall_1.par_b
+
+            a2 = wall_2.par_a
+            b2 = wall_2.par_b
+
+            wall_1_r_max = math.sqrt( pow((x_cross-wall_1.max_x),2) + pow((y_cross- (wall_1.par_a*wall_1.max_x+wall_1.par_b)),2) )
+            wall_1_r_min = math.sqrt( pow((x_cross-wall_1.min_x),2) + pow((y_cross- (wall_1.par_a*wall_1.min_x+wall_1.par_b)),2) )
+            wall_1_r = wall_1_r_max if wall_1_r_max < wall_1_r_min else wall_1_r_min
+
+            wall_2_r_max = math.sqrt( pow((x_cross-wall_2.max_x),2) + pow((y_cross- (wall_2.par_a*wall_2.max_x+wall_2.par_b)),2) )
+            wall_2_r_min = math.sqrt( pow((x_cross-wall_2.min_x),2) + pow((y_cross- (wall_2.par_a*wall_2.min_x+wall_2.par_b)),2) )
+            wall_2_r = wall_2_r_max if wall_2_r_max < wall_2_r_min else wall_2_r_min
+
+            r = (wall_1_r + wall_2_r)/2
+            print(f"r: {r}")
+
+
+            angle = np.arctan( (a2*(-1) - a1*(-1))/(a1*a2 + (-1)*(-1)) )
+            angle = angle*180 
+            angle = (angle + 360) % 360
+            if (angle > 180):  
+                angle -= 360
+            angle = abs(angle)
+
+            print(f"angle: {angle}")
+
+            if r < domain_error_margin and angle>45:
+                corners.append((x_cross,y_cross))
+                print("Huston, we have got a cornerr!")
+            
+            plt.clf() # clean plot
+
+
 
     plot_points(org_points, args="x")
-
     print(f"Number of walls: {len(walls)}")
+  
+
+    print(f"Numbers of corners: {len(corners)}")
+    for corner in corners:
+        print(f"c_x: {corner[0]}, c_y: {corner[1]}")
+        plt.plot(corner[0],corner[1], markersize=12, marker='8', color='green') 
+
+
     plot_walls(walls)
-
-
     pass
